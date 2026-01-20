@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mini Games Hub</title>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(-45deg, #020617, #0f172a, #020617, #1e293b);
+  background-size: 400% 400%;
+  animation: gradientMove 12s ease infinite;
+  overflow: hidden;
+  color: white;
+}
+@keyframes gradientMove {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.screen { display: none; width: 340px; background: rgba(30,41,59,0.75); backdrop-filter: blur(14px); padding: 25px; border-radius: 18px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.4); position: relative; }
+.active { display: block; }
+.card { background: rgba(51,65,85,0.8); padding: 20px; border-radius: 14px; margin-bottom: 15px; cursor: pointer; }
+button { padding: 14px 22px; font-size: 16px; border: none; border-radius: 12px; cursor: pointer; margin-top: 15px; }
+#startBtn { background: #3b82f6; color: white; }
+#clickBtn { background: #22c55e; font-size: 22px; padding: 30px 80px; margin-top: 20px; display: none; }
+.backBtn { background: #ef4444; color: white; }
+.big-timer { font-size: 64px; font-weight: bold; }
+.top-bar { position: absolute; top: 12px; left: 14px; right: 14px; display: flex; justify-content: space-between; }
+.badge { background: rgba(15,23,42,0.9); padding: 6px 12px; border-radius: 12px; font-size: 13px; font-weight: bold; }
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; justify-content: center; align-items: center; z-index: 10; }
+.popup { background: #020617; padding: 25px; border-radius: 16px; text-align: center; pointer-events: none; }
+.popup button { opacity: 0.4; pointer-events: none; }
+.popup.ready { pointer-events: auto; }
+.popup.ready button { opacity: 1; pointer-events: auto; }
+.credit { position: fixed; bottom: 10px; right: 14px; font-size: 12px; opacity: 0.6; user-select: none; }
+</style>
+</head>
+<body>
+
+<div class="credit">made by diggi</div>
+
+<!-- HOME -->
+<div id="home" class="screen active">
+  <h1>🎮 Mini Games</h1>
+  <div class="card" onclick="openGame()">⚡ Click Speed Test</div>
+</div>
+
+<!-- GAME -->
+<div id="clickGame" class="screen">
+  <div class="top-bar">
+    <div id="rankBadge" class="badge">NOOB</div>
+    <div id="bestBadge" class="badge">🏆 0.00 CPS</div>
+  </div>
+  <h2>Click Speed</h2>
+  <div class="big-timer" id="time">5</div>
+  <p>Clicks: <span id="score">0</span></p>
+  <p>CPS: <span id="cps">0.00</span></p>
+  <button id="startBtn">Start</button><br>
+  <button id="clickBtn">CLICK!</button><br>
+  <button class="backBtn" onclick="goHome()">⬅ Home</button>
+</div>
+
+<!-- RESULT -->
+<div class="overlay" id="overlay">
+  <div class="popup" id="popup">
+    <h2>Results</h2>
+    <p>Clicks: <span id="finalClicks"></span></p>
+    <p>CPS: <span id="finalCps"></span></p>
+    <button onclick="closePopup()">OK</button>
+  </div>
+</div>
+
+<script>
+/* AUDIO */
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+const audioCtx = new AudioCtx();
+function playClickSound() {
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.frequency.value = 700;
+  g.gain.setValueAtTime(0.07, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime + 0.08);
+}
+function playEndSound() {
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.frequency.value = 300;
+  g.gain.setValueAtTime(0.15, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime + 0.4);
+}
+
+/* GAME LOGIC */
+const home = document.getElementById("home");
+const game = document.getElementById("clickGame");
+const overlay = document.getElementById("overlay");
+const popup = document.getElementById("popup");
+
+const timeEl = document.getElementById("time");
+const scoreEl = document.getElementById("score");
+const cpsEl = document.getElementById("cps");
+const finalClicks = document.getElementById("finalClicks");
+const finalCps = document.getElementById("finalCps");
+const startBtn = document.getElementById("startBtn");
+const clickBtn = document.getElementById("clickBtn");
+const rankBadge = document.getElementById("rankBadge");
+const bestBadge = document.getElementById("bestBadge");
+
+let bestCps = Number(localStorage.getItem("bestCps")) || 0;
+bestBadge.textContent = "🏆 " + bestCps.toFixed(2) + " CPS";
+
+function getRank(cps) {
+  if (cps < 5) return "NOOB";
+  if (cps < 8) return "PRO";
+  if (cps < 11) return "HACKER";
+  return "GODSPEED";
+}
+rankBadge.textContent = getRank(bestCps);
+
+let timer, time = 5, score = 0, running = false;
+
+function openGame() {
+  home.classList.remove("active");
+  game.classList.add("active");
+  rankBadge.textContent = getRank(bestCps);
+}
+
+function goHome() {
+  game.classList.remove("active");
+  home.classList.add("active");
+}
+
+startBtn.onclick = () => {
+  if (running) return;
+  audioCtx.resume();
+
+  /* RESET EVERYTHING */
+  clearInterval(timer);
+  running = true;
+  time = 5;
+  score = 0;
+  timeEl.textContent = time;
+  scoreEl.textContent = score;
+  cpsEl.textContent = "0.00";
+  startBtn.style.display = "none";
+  clickBtn.style.display = "inline-block";
+  overlay.style.display = "none"; // hide popup if still visible
+
+  timer = setInterval(() => {
+    time--;
+    timeEl.textContent = time;
+    if (time <= 0) {
+      clearInterval(timer);
+      running = false;
+
+      const cps = score / 5;
+      cpsEl.textContent = cps.toFixed(2);
+
+      if (cps > bestCps) {
+        bestCps = cps;
+        localStorage.setItem("bestCps", bestCps);
+        bestBadge.textContent = "🏆 " + bestCps.toFixed(2) + " CPS";
+        rankBadge.textContent = getRank(bestCps);
+      }
+
+      finalClicks.textContent = score;
+      finalCps.textContent = cps.toFixed(2);
+
+      playEndSound();
+      overlay.style.display = "flex";
+      popup.classList.remove("ready");
+      setTimeout(() => popup.classList.add("ready"), 500);
+      startBtn.style.display = "inline-block";
+      clickBtn.style.display = "none";
+      startBtn.textContent = "Play Again";
+    }
+  }, 1000);
+};
+
+clickBtn.onclick = () => {
+  if (!running) return;
+  score++;
+  scoreEl.textContent = score;
+  playClickSound();
+};
+
+function closePopup() {
+  overlay.style.display = "none";
+}
+</script>
+
+</body>
+</html>
